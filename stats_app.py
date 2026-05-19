@@ -17,21 +17,12 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 
-# ---------------------------------------------------------------------------
-# Page config — must be first Streamlit call
-# ---------------------------------------------------------------------------
-st.set_page_config(
-    page_title="Maricopa Housing Stats",
-    layout="wide",
-)
+st.set_page_config(page_title="Maricopa Housing Stats", layout="wide")
 
 HERE = Path(__file__).resolve().parent
 DATA_PATH = HERE / "data" / "processed" / "residential_with_sales.parquet"
 
 
-# ---------------------------------------------------------------------------
-# Data load (cached — heavy file, only read once)
-# ---------------------------------------------------------------------------
 @st.cache_data
 def load_data():
     if not DATA_PATH.exists():
@@ -53,32 +44,22 @@ if df is None:
     )
     st.stop()
 
-
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Sidebar filters
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
 st.sidebar.title("Filters")
 
 year_min, year_max = int(df["sale_year"].min()), int(df["sale_year"].max())
-year_range = st.sidebar.slider(
-    "Sale year",
-    min_value=year_min, max_value=year_max,
-    value=(year_min, year_max),
-)
+year_range = st.sidebar.slider("Sale year", min_value=year_min, max_value=year_max, value=(year_min, year_max))
 
 class_options = sorted(df["Class"].dropna().unique().tolist())
-class_pick = st.sidebar.multiselect(
-    "Property class",
-    options=class_options,
-    default=class_options,
-)
+class_pick = st.sidebar.multiselect("Property class", options=class_options, default=class_options)
 
 book_options = sorted(df["BOOK"].dropna().unique().tolist())
 book_pick = st.sidebar.multiselect(
     "BOOK (geographic cluster) — leave empty for all",
-    options=book_options,
-    default=[],
-    help="First 3 digits of the parcel number. Each BOOK groups geographically nearby parcels.",
+    options=book_options, default=[],
+    help="First 3 digits of the parcel number.",
 )
 
 sqft_min_lim = int(df["Living_sqft"].min())
@@ -86,15 +67,13 @@ sqft_max_lim = int(df["Living_sqft"].max())
 sqft_range = st.sidebar.slider(
     "Living square feet",
     min_value=sqft_min_lim, max_value=min(sqft_max_lim, 10_000),
-    value=(sqft_min_lim, min(sqft_max_lim, 10_000)),
-    step=100,
+    value=(sqft_min_lim, min(sqft_max_lim, 10_000)), step=100,
 )
 
-# Apply filters
 mask = (
-    df["sale_year"].between(year_range[0], year_range[1]) &
-    df["Class"].isin(class_pick) &
-    df["Living_sqft"].between(sqft_range[0], sqft_range[1])
+    df["sale_year"].between(year_range[0], year_range[1])
+    & df["Class"].isin(class_pick)
+    & df["Living_sqft"].between(sqft_range[0], sqft_range[1])
 )
 if book_pick:
     mask &= df["BOOK"].isin(book_pick)
@@ -104,20 +83,12 @@ st.sidebar.markdown("---")
 st.sidebar.metric("Sales matching filters", f"{len(fdf):,}")
 st.sidebar.caption(f"Out of {len(df):,} total in the dataset.")
 
-
-# ---------------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Header + KPI cards
+# -------------------------------------------------------------------
 st.title("Maricopa County Housing Stats")
-st.caption(
-    f"{len(df):,} residential sales · {year_min}–{year_max} · "
-    f"{df['BOOK'].nunique()} geographic clusters"
-)
+st.caption(f"{len(df):,} residential sales · {year_min}-{year_max} · {df['BOOK'].nunique()} geographic clusters")
 
-
-# ---------------------------------------------------------------------------
-# Top: KPI cards
-# ---------------------------------------------------------------------------
 if len(fdf) == 0:
     st.warning("No sales match your filters. Loosen them to see results.")
     st.stop()
@@ -138,92 +109,64 @@ c4.metric(f"Median in {cur_year_max}", f"${last_year.median():,.0f}", delta=yoy_
 
 st.divider()
 
-
-# ---------------------------------------------------------------------------
-# Charts — Row 1
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Row 1: price-by-year + price distribution
+# -------------------------------------------------------------------
 left, right = st.columns(2)
 
-# Chart 1: price by year (median + mean)
 with left:
     st.subheader("Median & mean sale price by year")
-    by_year = (
-        fdf.groupby("sale_year")["SALE_PRICE"]
-           .agg(["count", "median", "mean"])
-           .reset_index()
-    )
+    by_year = fdf.groupby("sale_year")["SALE_PRICE"].agg(["count", "median", "mean"]).reset_index()
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=by_year["sale_year"], y=by_year["median"],
-        mode="lines+markers", name="Median",
-        line=dict(color="#0EA5E9", width=3),
-    ))
-    fig.add_trace(go.Scatter(
-        x=by_year["sale_year"], y=by_year["mean"],
-        mode="lines+markers", name="Mean",
-        line=dict(color="#F59E0B", width=3),
-    ))
-    fig.update_layout(
-        xaxis_title="Sale year",
-        yaxis_title="Price ($)",
-        height=380,
-        margin=dict(l=10, r=10, t=10, b=10),
-        legend=dict(orientation="h", y=-0.18),
-    )
+    fig.add_trace(go.Scatter(x=by_year["sale_year"], y=by_year["median"],
+                             mode="lines+markers", name="Median",
+                             line=dict(color="#0EA5E9", width=3)))
+    fig.add_trace(go.Scatter(x=by_year["sale_year"], y=by_year["mean"],
+                             mode="lines+markers", name="Mean",
+                             line=dict(color="#F59E0B", width=3)))
+    fig.update_layout(xaxis_title="Sale year", yaxis_title="Price ($)", height=380,
+                      margin=dict(l=10, r=10, t=10, b=10),
+                      legend=dict(orientation="h", y=-0.18))
     fig.update_yaxes(tickprefix="$", separatethousands=True)
     st.plotly_chart(fig, use_container_width=True)
 
-# Chart 2: distribution of prices
 with right:
     st.subheader("Distribution of sale prices (log scale)")
-    fig = px.histogram(
-        fdf, x="SALE_PRICE", nbins=60,
-        color_discrete_sequence=["#1E293B"],
-    )
-    fig.update_xaxes(type="log", tickprefix="$", title="Price ($, log scale)")
+    # Bin in log space, label x-axis with dollar amounts.
+    log_price = np.log10(fdf["SALE_PRICE"])
+    fig = px.histogram(x=log_price, nbins=60, color_discrete_sequence=["#1E293B"])
+    dollar_ticks = [50_000, 100_000, 200_000, 500_000, 1_000_000, 2_000_000, 5_000_000]
+    tick_vals = [np.log10(d) for d in dollar_ticks]
+    tick_text = [f"${d//1000:,}K" if d < 1_000_000 else f"${d//1_000_000}M" for d in dollar_ticks]
+    fig.update_xaxes(tickvals=tick_vals, ticktext=tick_text, title="Sale price (log scale)")
     fig.update_yaxes(title="Number of sales")
     fig.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10), bargap=0.05)
     st.plotly_chart(fig, use_container_width=True)
 
-
-# ---------------------------------------------------------------------------
-# Charts — Row 2
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Row 2: top BOOKs + median by class
+# -------------------------------------------------------------------
 left, right = st.columns(2)
 
 with left:
     st.subheader("Top BOOKs by sale count")
-    top_books = (
-        fdf.groupby("BOOK")["SALE_PRICE"]
-           .agg(["count", "median"])
-           .sort_values("count", ascending=False)
-           .head(15)
-           .reset_index()
-    )
-    fig = px.bar(
-        top_books.iloc[::-1],
-        x="count", y="BOOK", orientation="h",
-        color="median",
-        color_continuous_scale="Teal",
-        labels={"count": "Number of sales", "BOOK": "BOOK", "median": "Median $"},
-    )
-    fig.update_layout(height=420, margin=dict(l=10, r=10, t=10, b=10), coloraxis_colorbar=dict(title="Median $"))
+    top_books = (fdf.groupby("BOOK")["SALE_PRICE"].agg(["count", "median"])
+                    .sort_values("count", ascending=False).head(15).reset_index())
+    fig = px.bar(top_books.iloc[::-1], x="count", y="BOOK", orientation="h",
+                 color="median", color_continuous_scale="Teal",
+                 labels={"count": "Number of sales", "BOOK": "BOOK", "median": "Median $"})
+    fig.update_layout(height=420, margin=dict(l=10, r=10, t=10, b=10),
+                      coloraxis_colorbar=dict(title="Median $"))
     fig.update_xaxes(separatethousands=True)
     st.plotly_chart(fig, use_container_width=True)
 
 with right:
     st.subheader("Median price by property class")
-    by_class = (
-        fdf.groupby("Class")["SALE_PRICE"]
-           .agg(["count", "median"])
-           .sort_values("median")
-           .reset_index()
-    )
-    fig = px.bar(
-        by_class, x="Class", y="median",
-        text=by_class["median"].apply(lambda x: f"${x/1000:,.0f}k"),
-        color="median", color_continuous_scale="Sunset",
-    )
+    by_class = (fdf.groupby("Class")["SALE_PRICE"].agg(["count", "median"])
+                   .sort_values("median").reset_index())
+    fig = px.bar(by_class, x="Class", y="median",
+                 text=by_class["median"].apply(lambda x: f"${x/1000:,.0f}k"),
+                 color="median", color_continuous_scale="Sunset")
     fig.update_traces(textposition="outside")
     fig.update_layout(height=420, margin=dict(l=10, r=10, t=20, b=10), showlegend=False)
     fig.update_yaxes(tickprefix="$", separatethousands=True, title="Median price")
@@ -231,41 +174,31 @@ with right:
     fig.update_coloraxes(showscale=False)
     st.plotly_chart(fig, use_container_width=True)
 
-
-# ---------------------------------------------------------------------------
-# Charts — Row 3 (the big scatter)
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Row 3: sqft vs price scatter
+# -------------------------------------------------------------------
 st.subheader("Living sqft vs. sale price")
 
-# Sample to keep the scatter responsive even on full county
 sample_n = min(20_000, len(fdf))
 sample = fdf.sample(sample_n, random_state=0)
 
 fig = px.scatter(
-    sample,
-    x="Living_sqft", y="SALE_PRICE",
-    color="Class",
-    opacity=0.45,
-    hover_data={"sale_year": True, "BOOK": True, "Living_sqft": ":,.0f", "SALE_PRICE": ":,.0f"},
+    sample, x="Living_sqft", y="SALE_PRICE",
+    color="Class", opacity=0.45,
+    hover_data={"sale_year": True, "BOOK": True,
+                "Living_sqft": ":,.0f", "SALE_PRICE": ":,.0f"},
 )
 fig.update_traces(marker=dict(size=4))
-fig.update_layout(
-    height=520,
-    margin=dict(l=10, r=10, t=10, b=10),
-    legend=dict(orientation="h", y=-0.12),
-)
+fig.update_layout(height=520, margin=dict(l=10, r=10, t=10, b=10),
+                  legend=dict(orientation="h", y=-0.12))
 fig.update_yaxes(type="log", tickprefix="$", separatethousands=True, title="Sale price (log scale)")
 fig.update_xaxes(title="Living square feet")
 st.plotly_chart(fig, use_container_width=True)
 st.caption(f"Showing {sample_n:,} of {len(fdf):,} filtered sales. Y-axis is log-scaled.")
 
-
-# ---------------------------------------------------------------------------
-# Footer
-# ---------------------------------------------------------------------------
 st.divider()
 st.caption(
     "Data: Maricopa County Assessor's Office, Residential Master (R116). "
-    "Sales filtered to $50K–$5M, 2018–2026. "
-    "Companion to [maricopa-housing-predictor](https://github.com/AdithyaSP/maricopa-housing-predictor)."
+    "Sales filtered to $50K-$5M, 2018-2026. "
+    "Companion to maricopa-housing-predictor."
 )
