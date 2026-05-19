@@ -26,10 +26,7 @@ st.set_page_config(
 )
 
 HERE = Path(__file__).resolve().parent
-# Prefer the full file if available (local dev); fall back to the 50k sample
-# (committed to git so the cloud deployment has data).
-FULL_PATH   = HERE / "data" / "processed" / "residential_with_sales.parquet"
-SAMPLE_PATH = HERE / "data" / "processed" / "residential_sample.parquet"
+DATA_PATH = HERE / "data" / "processed" / "residential_with_sales.parquet"
 
 
 # ---------------------------------------------------------------------------
@@ -37,28 +34,22 @@ SAMPLE_PATH = HERE / "data" / "processed" / "residential_sample.parquet"
 # ---------------------------------------------------------------------------
 @st.cache_data
 def load_data():
-    if FULL_PATH.exists():
-        df = pd.read_parquet(FULL_PATH)
-        source = "full dataset"
-    elif SAMPLE_PATH.exists():
-        df = pd.read_parquet(SAMPLE_PATH)
-        source = "50k sample"
-    else:
-        return None, None
+    if not DATA_PATH.exists():
+        return None
+    df = pd.read_parquet(DATA_PATH)
     df["SALE_DATE"]  = pd.to_datetime(df["SALE_DATE"], errors="coerce")
     df["sale_year"]  = df["SALE_DATE"].dt.year.astype("Int64")
     df["sale_month"] = df["SALE_DATE"].dt.month.astype("Int64")
-    return df, source
+    return df
 
 
-df, source = load_data()
+df = load_data()
 if df is None:
     st.title("Maricopa Housing Stats")
     st.error(
-        "No data file found.\n\n"
-        "Locally: run `python notebooks/01_get_data.py` to generate the full file.\n\n"
-        "For the committed demo data, expected at "
-        "`data/processed/residential_sample.parquet`."
+        "`data/processed/residential_with_sales.parquet` not found.\n\n"
+        "Run `python notebooks/01_get_data.py` to generate it. "
+        "See the README for the data-source steps."
     )
     st.stop()
 
@@ -120,7 +111,7 @@ st.sidebar.caption(f"Out of {len(df):,} total in the dataset.")
 st.title("Maricopa County Housing Stats")
 st.caption(
     f"{len(df):,} residential sales · {year_min}–{year_max} · "
-    f"{df['BOOK'].nunique()} geographic clusters · source: {source}"
+    f"{df['BOOK'].nunique()} geographic clusters"
 )
 
 

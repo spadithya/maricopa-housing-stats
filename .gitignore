@@ -20,9 +20,9 @@ data/processed/*
 data/raw/Residential_Master/*
 !data/raw/Residential_Master/FileSpec/
 
-# The 50k sampled parquet IS committed — it ships the demo data with the repo
-# so the deployed Streamlit Cloud app has data to show.
-!data/processed/residential_sample.parquet
+# The processed parquet IS committed — small enough for GitHub (~9 MB)
+# and lets the deployed Streamlit Cloud app run with real data.
+!data/processed/residential_with_sales.parquet
 
 # ----------------------------------------------------------------------------
 # Trained models / artifacts
